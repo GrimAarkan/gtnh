@@ -4,6 +4,8 @@ import { Fluid, Goods, Item, Recipe, RecipeInOut, RecipeIoType, RecipeType, Repo
 import { TIER_LV, TIER_MV, TIER_LUV, TIER_ZPM, TIER_UV, TIER_UHV, TIER_UEV, TIER_UIV, TIER_UXV, CoilTierNames } from "./utils.js";
 import { voltageTier, getFusionTierByStartupCost, formatTicksAsTime } from "./utils.js";
 import { calculateGenerator } from "./fuel.js";
+import { getGasTurbineEfficiency, turbineRotorMaterials } from "./turbineEfficiencies.js";
+import type { GasTurbineRotorSize } from "./turbineEfficiencies.js";
 
 export type MachineCoefficient<T> = Exclude<T, Function> | ((recipe:RecipeModel, choices:{[key:string]:number}) => T);
 
@@ -114,10 +116,10 @@ export type Machine = {
     roundAfterParallels?: boolean;
     /**
      * Marks this machine as a power generator burning a fuel recipe. Returns the output of ONE machine in EU/t
-     * and the share of fuel energy lost. The solver then treats "recipe rate" as fuel burn rate and reports
+     * and its efficiency multiplier. The solver then treats "recipe rate" as fuel burn rate and reports
      * generated power as negative energy.
      */
-    generator?: (recipe:RecipeModel, choices:{[key:string]:number}) => {euPerTick:number, efficiencyLossPercent:number};
+    generator?: (recipe:RecipeModel, choices:{[key:string]:number}) => {euPerTick:number, efficiency:number};
 }
 
 export function GetParameter<T>(coefficient: MachineCoefficient<T>, recipeModel:RecipeModel): T {
@@ -233,7 +235,7 @@ export const fuelGeneratorMachine:Machine = {
     recipe: (recipe, choices, items) => GetGeneratorItems(items),
     generator: (recipe, choices) => ({
         euPerTick: voltageTier[recipe.voltageTier].voltage * Math.max(1, choices.amperage ?? 1),
-        efficiencyLossPercent: choices.efficiencyLoss ?? 0,
+        efficiency: 1 - Math.min(99, Math.max(0, choices.efficiencyLoss || 0)) / 100,
     }),
     info: (recipe, choices) => {
         const gtRecipe = recipe.recipe?.gtRecipe;
@@ -242,7 +244,7 @@ export const fuelGeneratorMachine:Machine = {
             fuelValue: GetFuelValue(recipe.recipe),
             fuelAmount,
             euPerTick: voltageTier[recipe.voltageTier].voltage * Math.max(1, choices.amperage ?? 1),
-            efficiencyLossPercent: choices.efficiencyLoss ?? 0,
+            efficiency: 1 - Math.min(99, Math.max(0, choices.efficiencyLoss || 0)) / 100,
         }) : null;
         if (!result)
             return "Generator";
@@ -251,6 +253,60 @@ export const fuelGeneratorMachine:Machine = {
     },
     excludesRecipe: (recipe:Recipe) => !IsFuelRecipe(recipe),
 };
+
+function createGasTurbineMachine(rotorSize:GasTurbineRotorSize):Machine {
+    const isXl = rotorSize === "huge";
+    const getEfficiency = (choices:{[key:string]:number}) => getGasTurbineEfficiency(
+        choices.rotorMaterial ?? 0,
+        rotorSize,
+        choices.turbineFitting ?? 0,
+    );
+    const getEuPerTick = (recipe:RecipeModel, choices:{[key:string]:number}) =>
+        voltageTier[recipe.voltageTier].voltage * Math.max(1, choices.amperage ?? 1);
+
+    return {
+        overclocker: NullOverclocker.instance,
+        speed: 1,
+        power: 1,
+        parallels: 1,
+        choices: {
+            amperage: {description: "Output amperage", min: 1},
+            rotorMaterial: {
+                description: "Turbine rotor material",
+                choices: turbineRotorMaterials.map(material => material.name),
+            },
+            turbineFitting: {description: "Turbine fitting", choices: ["Tight", "Loose"]},
+        },
+        recipe: (recipe, choices, items) => GetGeneratorItems(items),
+        generator: (recipe, choices) => ({
+            euPerTick: getEuPerTick(recipe, choices),
+            efficiency: getEfficiency(choices),
+        }),
+        info: (recipeModel, choices) => {
+            const gtRecipe = recipeModel.recipe?.gtRecipe;
+            const fuelAmount = GetFuelAmount(GetGeneratorItems(recipeModel.recipe?.items ?? []));
+            const euPerTick = getEuPerTick(recipeModel, choices);
+            const efficiency = getEfficiency(choices);
+            const result = gtRecipe && recipeModel.recipe ? calculateGenerator({
+                fuelValue: GetFuelValue(recipeModel.recipe),
+                fuelAmount,
+                euPerTick,
+                efficiency,
+            }) : null;
+            if (!result)
+                return "Gas turbine";
+            const percent = Math.round(efficiency * 1000) / 10;
+            const size = isXl ? "XL gas turbine" : "Large gas turbine";
+            return `${size}: generates ${euPerTick} EU/t per machine at ${percent}% rotor efficiency, burning ${Math.round(result.fuelPerTick * 1000) / 1000}/t`;
+        },
+        excludesRecipe: (recipe:Recipe) => !IsFuelRecipe(recipe),
+    };
+}
+
+machines["Large Gas Turbine"] = createGasTurbineMachine("large");
+const xlGasTurbineMachine = createGasTurbineMachine("huge");
+machines["XL Turbo Gas Turbine."] = xlGasTurbineMachine;
+machines["XL Turbo Gas Turbine"] = xlGasTurbineMachine;
 
 export function GetSingleBlockMachine(recipeType:RecipeType):Machine {
     if (recipeType.name == "Mass Fabrication")

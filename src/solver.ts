@@ -191,7 +191,7 @@ function PreProcessGenerator(recipeModel:RecipeModel, recipe:Recipe, machineInfo
         fuelValue: GetFuelValue(recipe),
         fuelAmount: GetFuelAmount(machineInfo.recipe ? machineInfo.recipe(recipeModel, recipeModel.choices, recipe.items) : recipe.items),
         euPerTick: spec.euPerTick,
-        efficiencyLossPercent: spec.efficiencyLossPercent,
+        efficiency: spec.efficiency,
     });
     if (result === null)
         return;

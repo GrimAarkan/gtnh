@@ -9,12 +9,12 @@ export type GeneratorInput = {
     fuelAmount: number;
     /** Output of ONE generator in EU/t. */
     euPerTick: number;
-    /** Percentage of the fuel's energy lost, 0..99. 0 means 100% efficient. */
-    efficiencyLossPercent: number;
+    /** Efficiency multiplier. Values above 1 represent output above the fuel's nominal energy. */
+    efficiency: number;
 }
 
 export type GeneratorResult = {
-    /** Efficiency as a fraction (0..1]. */
+    /** Efficiency multiplier as a fraction; values above 1 are valid. */
     efficiency: number;
     /** EU produced by one recipe (burning fuelAmount of fuel). */
     euPerRecipe: number;
@@ -28,11 +28,9 @@ export type GeneratorResult = {
 
 /** Returns null when the inputs can't describe a working generator. */
 export function calculateGenerator(input: GeneratorInput): GeneratorResult | null {
-    const { fuelValue, fuelAmount, euPerTick, efficiencyLossPercent } = input;
-    if (!(fuelValue > 0) || !(fuelAmount > 0) || !(euPerTick > 0))
+    const { fuelValue, fuelAmount, euPerTick, efficiency } = input;
+    if (!(fuelValue > 0) || !(fuelAmount > 0) || !(euPerTick > 0) || !(efficiency > 0))
         return null;
-    const loss = Math.min(99, Math.max(0, efficiencyLossPercent || 0));
-    const efficiency = 1 - loss / 100;
     const euPerRecipe = fuelAmount * fuelValue * efficiency;
     const durationTicks = euPerRecipe / euPerTick;
     return {
