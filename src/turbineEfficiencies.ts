@@ -1,4 +1,6 @@
-export type GasTurbineRotorSize = "large" | "huge";
+export type GasTurbineRotorSize = "small" | "normal" | "large" | "huge";
+
+export const gasTurbineRotorSizes: GasTurbineRotorSize[] = ["small", "normal", "large", "huge"];
 
 export type TurbineRotorMaterial = {
     name: string;
@@ -66,53 +68,112 @@ export const turbineRotorMaterials: TurbineRotorMaterial[] = [
     { name: "Universium", tier: 25 },
 ];
 
-type GasTurbineEfficiency = {
-    tightLarge: number;
-    tightHuge: number;
-    looseLarge: number;
-    looseHuge: number;
-}
-
-// Efficiency is stored as a multiplier (for example, 1.35 means 135%).
-const gasEfficiencyByRotorTier: Record<number, GasTurbineEfficiency> = {
-    0: { tightLarge: 1.05, tightHuge: 1.3, looseLarge: 0.6555, looseHuge: 0.8645 },
-    1: { tightLarge: 1.15, tightHuge: 1.4, looseLarge: 0.741, looseHuge: 0.9405 },
-    2: { tightLarge: 1.25, tightHuge: 1.5, looseLarge: 0.817, looseHuge: 1.026 },
-    3: { tightLarge: 1.35, tightHuge: 1.6, looseLarge: 0.9025, looseHuge: 1.102 },
-    4: { tightLarge: 1.45, tightHuge: 1.7, looseLarge: 0.9785, looseHuge: 1.1875 },
-    5: { tightLarge: 1.55, tightHuge: 1.8, looseLarge: 1.064, looseHuge: 1.2635 },
-    6: { tightLarge: 1.65, tightHuge: 1.9, looseLarge: 1.14, looseHuge: 1.349 },
-    7: { tightLarge: 1.75, tightHuge: 2, looseLarge: 1.2255, looseHuge: 1.425 },
-    8: { tightLarge: 1.85, tightHuge: 2.1, looseLarge: 1.3015, looseHuge: 1.5105 },
-    9: { tightLarge: 1.95, tightHuge: 2.2, looseLarge: 1.387, looseHuge: 1.5865 },
-    10: { tightLarge: 2.05, tightHuge: 2.3, looseLarge: 1.463, looseHuge: 1.672 },
-    11: { tightLarge: 2.15, tightHuge: 2.4, looseLarge: 1.5485, looseHuge: 1.748 },
-    12: { tightLarge: 2.25, tightHuge: 2.5, looseLarge: 1.6245, looseHuge: 1.8335 },
-    13: { tightLarge: 2.35, tightHuge: 2.6, looseLarge: 1.71, looseHuge: 1.9095 },
-    17: { tightLarge: 2.75, tightHuge: 3, looseLarge: 2.033, looseHuge: 2.2325 },
-    22: { tightLarge: 3.25, tightHuge: 3.5, looseLarge: 2.432, looseHuge: 2.641 },
-    24: { tightLarge: 3.45, tightHuge: 3.7, looseLarge: 2.5935, looseHuge: 2.8025 },
-    25: { tightLarge: 3.55, tightHuge: 3.8, looseLarge: 2.679, looseHuge: 2.8785 },
-    26: { tightLarge: 3.65, tightHuge: 3.9, looseLarge: 2.755, looseHuge: 2.964 },
+// Mining speed values are from the workbook's material rows. Steel is first for the default choice.
+const miningSpeedByMaterial: Record<string, number> = {
+    "Steel": 6, "Carbon": 1, "Realgar": 1, "Clay Compound": 2,
+    "Bronze": 6, "Iron": 6, "Magnetic Iron": 6, "Magnetic Steel": 6,
+    "Wrought Iron": 6, "Tin Alloy": 6.5, "Brass": 7, "Silver": 10,
+    "Electrum": 12, "Gold": 12, "Beryllium": 14, "Nickel-Zinc Ferrite": 3,
+    "Polycaprolactam": 3, "Redstone Alloy": 3, "Vanadiumsteel": 3, "Alumite": 5,
+    "Obzinite": 5, "Calcium": 5.49, "Bismuth": 6, "Conductive Iron": 6,
+    "Cupronickel": 6, "Electrical Steel": 6, "Invar": 6, "Ironwood": 6,
+    "Magnalium": 6, "Nickel": 6, "Pig Iron": 6, "Pulsating Iron": 6,
+    "Thorium": 6, "Black Steel": 6.5, "Manganese": 7, "Molybdenum": 7,
+    "Red Steel": 7, "Blue Steel": 7.5, "Bismuth Bronze": 8, "Cobalt": 8,
+    "Cobalt Brass": 8, "Damascus Steel": 8, "Dark Steel": 8, "Fiery Steel": 8,
+    "Knightmetal": 8, "Lead": 8, "Manasteel": 8, "Soularium": 8,
+    "Steeleaf": 8, "Aluminium": 10, "Blood Infused Iron": 10, "Black Bronze": 12,
+    "Thaumium": 12, "Ardite": 18, "Manyullyn": 25, "Kanthal": 6,
+    "Stainless Steel": 7, "Energetic Silver": 8, "Chrome": 11, "Energetic Alloy": 12,
+    "Sterling Silver": 13, "Meteoric Iron": 6, "Meteoric Steel": 6, "Nichrome": 6,
+    "Magnetic Neodymium": 7, "Neodymium": 7, "Reinforced": 7, "Titanium": 7,
+    "Ultimet": 9, "Astral Silver": 10, "Ademic Steel": 12, "Vivid Alloy": 12,
+    "Endium": 16, "Galgadorian": 16, "Vibrant Alloy": 18, "Enhanced Galgadorian": 32,
+    "Shadow Metal": 32, "Terrasteel": 32, "Void Metal": 32, "Epoxid": 3,
+    "Fiber-Reinforced Epoxy Resin": 3, "Crystalline Pink Slime": 6, "Uranium-235": 6, "Uranium-238": 6,
+    "Tungsten": 7, "Enderium": 8, "Tungstensteel": 8, "HSS-G": 10,
+    "Vinteum": 10, "End Steel": 12, "Platinum": 12, "Tungstencarbide": 14,
+    "Duralumin": 16, "Enderium Base": 16, "TPV-Alloy": 16, "Crystalline Alloy": 18,
+    "Desh": 20, "Elven Elementium": 20, "Melodic Alloy": 24, "Vyroxeres": 32,
+    "Rubracium": 1, "MAR-M200 Steel": 2.60441, "Iridium": 6, "Plutonium-239": 6,
+    "Osmiridium": 7, "Mytryl": 8, "Palladium": 8, "Callisto Ice": 9,
+    "Infused Gold": 12, "Rhodium-Plated Palladium": 13.2, "Ledox": 15, "Osmium": 16,
+    "Quantium": 18, "Ruridit": 19.36, "HSS-E": 32, "HSS-S": 32,
+    "Ichorium": 32, "Orichalcum": 32, "Oriharukon": 32, "Deep Iron": 6,
+    "Naquadah": 6, "Shadow Steel": 6, "Mysterious Crystal": 8, "Naquadah Alloy": 8,
+    "Force": 10, "Fluxed Electrum": 16, "Draconium": 20, "Atomic Separation Catalyst": 31.72,
+    "Alduorite": 32, "Ceruclase": 32, "Duranium": 32, "Gaia Spirit": 32,
+    "High Durability Compound Steel": 32, "Mithril": 32, "Shadow Iron": 32, "Vulcanite": 32,
+    "Stellar Alloy": 96, "Trinium": 128, "MAR-Ce-M200 Steel": 150, "Naquadria": 1,
+    "Enriched Naquadah": 6, "Plutonium-241": 6, "Tritanium": 20, "Neutronium": 24,
+    "Adamantium": 32, "Chrysotile": 32, "Black Plutonium": 36, "Cosmic Neutronium": 96,
+    "Extremely Unstable Naquadah": 100, "Adamantium Alloy": 191.2, "Awakened Draconium": 40, "Infinity Catalyst": 64,
+    "Precious Metal Alloy": 100, "Enriched Naquadah Alloy": 180, "Infinity": 256, "Creon": 1,
+    "Mellion": 1, "Six-Phased Copper": 1, "Deep Dark Iron": 7, "Transcendent Metal": 290,
+    "Spacetime": 320, "Metastable Oganesson": 443.52, "Shirabon": 640, "Eternity": 1,
+    "Magmatter": 1, "Universium": 1,
 };
 
-export function getGasTurbineEfficiency(
+// The workbook's Overflow column is constant within each rotor tier.
+const overflowTierByRotorTier: Record<number, number> = {
+    0: 1, 1: 1, 2: 1, 3: 2, 4: 2, 5: 2,
+    6: 3, 7: 3, 8: 3, 9: 3, 10: 3, 11: 3, 12: 3, 13: 3,
+    17: 3, 22: 3, 24: 3, 25: 3, 26: 3,
+};
+
+export type GasTurbineProfile = {
+    baseEfficiency: number;
+    optimalFlowPerSecond: number;
+    maxFuelInputPerSecond: number;
+    overflowTier: number;
+}
+
+/**
+ * Uses the formulas in row 173 of the attached GTNH rotor workbook.
+ * Its gas-flow values are normalized to 1 EU/L, so scale them by the selected fuel value.
+ */
+export function getGasTurbineProfile(
     materialIndex: number,
-    rotorSize: GasTurbineRotorSize,
+    rotorSizeIndex: number,
     fittingIndex: number,
-): number {
+    fuelValue: number,
+    isXl: boolean,
+): GasTurbineProfile {
     const material = turbineRotorMaterials[materialIndex];
     if (!material)
         throw new RangeError(`Unknown turbine rotor material index: ${materialIndex}`);
 
-    const values = gasEfficiencyByRotorTier[material.tier];
-    if (!values)
-        throw new RangeError(`No gas turbine efficiency data for rotor tier ${material.tier}`);
-
+    if (!Number.isInteger(rotorSizeIndex) || rotorSizeIndex < 0 || rotorSizeIndex > 3)
+        throw new RangeError(`Unknown turbine rotor size index: ${rotorSizeIndex}`);
     if (fittingIndex !== 0 && fittingIndex !== 1)
         throw new RangeError(`Unknown turbine fitting index: ${fittingIndex}`);
+    if (!(fuelValue > 0))
+        throw new RangeError(`Invalid turbine fuel value: ${fuelValue}`);
 
-    if (rotorSize === "large")
-        return fittingIndex === 0 ? values.tightLarge : values.looseLarge;
-    return fittingIndex === 0 ? values.tightHuge : values.looseHuge;
+    const miningSpeed = miningSpeedByMaterial[material.name];
+    const overflowTier = overflowTierByRotorTier[material.tier];
+    if (!(miningSpeed > 0) || !overflowTier)
+        throw new RangeError(`Missing turbine data for rotor material: ${material.name}`);
+
+    const sizeMultiplier = rotorSizeIndex + 1;
+    const sizeEfficiencyOffset = [0, 2.5, 5, 7.5][rotorSizeIndex];
+    const tightEfficiency = 0.5 + 0.1 * (0.5 + sizeEfficiencyOffset + material.tier);
+    const baseEfficiency = fittingIndex === 0
+        ? tightEfficiency
+        : (-0.2 + Math.round(tightEfficiency * 85) * 0.01) * 0.95;
+
+    const gasFlowAtOneEuPerLiter = miningSpeed * sizeMultiplier * 50;
+    const optimalFlowPerTickAtOneEuPerLiter = fittingIndex === 0
+        ? gasFlowAtOneEuPerLiter
+        : 2 * gasFlowAtOneEuPerLiter * Math.pow(1.05, (tightEfficiency - 0.8) * 20);
+    const xlMultiplier = isXl ? 16 : 1;
+    const optimalFlowPerTick = optimalFlowPerTickAtOneEuPerLiter / fuelValue * xlMultiplier;
+    const maxFlowPerTick = Math.floor(optimalFlowPerTick) * 1.5 * overflowTier;
+
+    return {
+        baseEfficiency,
+        optimalFlowPerSecond: optimalFlowPerTick * 20,
+        maxFuelInputPerSecond: maxFlowPerTick * 20,
+        overflowTier,
+    };
 }
