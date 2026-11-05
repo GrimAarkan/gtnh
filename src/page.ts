@@ -241,6 +241,10 @@ export class RecipeModel extends RecipeGroupEntry
     machineInfo:Machine = singleBlockMachine;
     multiblockCrafter:Item | null = null;
     recipeItems:RecipeInOut[] = [];
+    // Generator (fuel recipe) state, filled by the solver
+    isGenerator:boolean = false;
+    generatorEuPerTick:number = 0;
+    generatorDurationMinutes:number = 0;
 
     Visit(visitor: ModelObjectVisitor): void {
         visitor.VisitData(this, "type", this.type);

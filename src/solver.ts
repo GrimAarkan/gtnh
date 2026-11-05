@@ -1,7 +1,8 @@
 import { Model, Solution } from "./types/javascript-lp-solver.js";
 import { PageModel, RecipeGroupModel, RecipeModel, ProductModel, FlowInformation, LinkAlgorithm, OverclockResult } from './page.js';
 import { Goods, Item, OreDict, Recipe, RecipeIoType, RecipeObject, Repository } from "./repository.js";
-import { singleBlockMachine, machines, notImplementedMachine, GetSingleBlockMachine, GetParameter } from "./machines.js";
+import { Machine, singleBlockMachine, machines, notImplementedMachine, GetSingleBlockMachine, GetParameter, IsFuelRecipe, GetFuelValue, GetFuelAmount, fuelGeneratorMachine } from "./machines.js";
+import { calculateGenerator } from "./fuel.js";
 import { voltageTier } from "./utils.js";
 
 class LinkCollection {
@@ -103,9 +104,16 @@ function PreProcessRecipe(recipeModel:RecipeModel, model:Model, collection:LinkC
     }
     let isSingleblock = !crafter;
     let machineInfo = crafter ? (machines[crafter.name] || notImplementedMachine) : GetSingleBlockMachine(recipe.recipeType);
+    // Fuel recipes (generators) use a dedicated machine model unless a specific generator machine is defined for the crafter
+    const isFuelRecipe = IsFuelRecipe(recipe);
+    if (isFuelRecipe && !machineInfo.generator)
+        machineInfo = fuelGeneratorMachine;
     recipeModel.multiblockCrafter = crafter;
     recipeModel.machineInfo = machineInfo;
-    if (gtRecipe && gtRecipe.durationTicks > 0) {
+    recipeModel.isGenerator = false;
+    if (isFuelRecipe && machineInfo.generator) {
+        PreProcessGenerator(recipeModel, recipe, machineInfo, varName, model);
+    } else if (gtRecipe && gtRecipe.durationTicks > 0) {
         if (machineInfo.fixedVoltageTier) {
             recipeModel.voltageTier = GetParameter(machineInfo.fixedVoltageTier, recipeModel)!;
         }
@@ -172,6 +180,36 @@ function PreProcessRecipe(recipeModel:RecipeModel, model:Model, collection:LinkC
                 collection.AddInput(goods, amount, varName);
             }
         }
+    }
+}
+
+function PreProcessGenerator(recipeModel:RecipeModel, recipe:Recipe, machineInfo:Machine, varName:string, model:Model)
+{
+    recipeModel.ValidateChoices(machineInfo, recipeModel);
+    const spec = machineInfo.generator!(recipeModel, recipeModel.choices);
+    const result = calculateGenerator({
+        fuelValue: GetFuelValue(recipe),
+        fuelAmount: GetFuelAmount(machineInfo.recipe ? machineInfo.recipe(recipeModel, recipeModel.choices, recipe.items) : recipe.items),
+        euPerTick: spec.euPerTick,
+        efficiencyLossPercent: spec.efficiencyLossPercent,
+    });
+    if (result === null)
+        return;
+
+    recipeModel.isGenerator = true;
+    recipeModel.generatorEuPerTick = spec.euPerTick;
+    recipeModel.generatorDurationMinutes = result.durationMinutes;
+    recipeModel.overclockFactor = 1;
+    recipeModel.powerFactor = 1;
+    recipeModel.parallels = 1;
+    recipeModel.overclockTiers = 0;
+    recipeModel.overclockName = undefined;
+
+    if (recipeModel.fixedCrafterCount) {
+        let crafterName = `fixed_${recipeModel.iid}`;
+        let fixedRecipesPerMinute = recipeModel.fixedCrafterCount / result.durationMinutes;
+        model.variables[varName][crafterName] = 1;
+        model.constraints[crafterName] = {equal:fixedRecipesPerMinute};
     }
 }
 
@@ -250,7 +288,11 @@ function ApplySolutionRecipe(recipeModel:RecipeModel, solution:Solution):void
     }
 
     let gtRecipe = recipe?.gtRecipe;
-    if (gtRecipe && gtRecipe.durationTicks > 0) {
+    if (recipeModel.isGenerator) {
+        // Generated power is reported as negative energy so that group totals show net consumption.
+        recipeModel.crafterCount = solutionValue * recipeModel.generatorDurationMinutes;
+        flow.energy[recipeModel.voltageTier] = -recipeModel.crafterCount * recipeModel.generatorEuPerTick;
+    } else if (gtRecipe && gtRecipe.durationTicks > 0) {
         flow.energy[recipeModel.voltageTier] = gtRecipe.durationMinutes * gtRecipe.voltage * solutionValue * recipeModel.powerFactor;
         recipeModel.crafterCount = solutionValue * gtRecipe.durationMinutes / recipeModel.overclockFactor;
     }

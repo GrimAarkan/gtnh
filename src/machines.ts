@@ -3,6 +3,7 @@ import { RecipeModel, OverclockResult } from "./page.js";
 import { Fluid, Goods, Item, Recipe, RecipeInOut, RecipeIoType, RecipeType, Repository } from "./repository.js";
 import { TIER_LV, TIER_MV, TIER_LUV, TIER_ZPM, TIER_UV, TIER_UHV, TIER_UEV, TIER_UIV, TIER_UXV, CoilTierNames } from "./utils.js";
 import { voltageTier, getFusionTierByStartupCost, formatTicksAsTime } from "./utils.js";
+import { calculateGenerator } from "./fuel.js";
 
 export type MachineCoefficient<T> = Exclude<T, Function> | ((recipe:RecipeModel, choices:{[key:string]:number}) => T);
 
@@ -111,6 +112,12 @@ export type Machine = {
     fixedVoltageTier?: MachineCoefficient<number>;
     excludesRecipe?: (recipe:Recipe) => boolean;
     roundAfterParallels?: boolean;
+    /**
+     * Marks this machine as a power generator burning a fuel recipe. Returns the output of ONE machine in EU/t
+     * and the share of fuel energy lost. The solver then treats "recipe rate" as fuel burn rate and reports
+     * generated power as negative energy.
+     */
+    generator?: (recipe:RecipeModel, choices:{[key:string]:number}) => {euPerTick:number, efficiencyLossPercent:number};
 }
 
 export function GetParameter<T>(coefficient: MachineCoefficient<T>, recipeModel:RecipeModel): T {
@@ -159,6 +166,90 @@ const singleBlockMachineWith22Overclock:Machine = {
         return Math.pow(0.5, recipe.voltageTier);
     },
     parallels: 1,
+};
+
+/** Fuel value (EU per liter/item) of a fuel recipe, or 0 when the recipe is not a fuel recipe. */
+export function GetFuelValue(recipe:Recipe):number {
+    const gt = recipe.gtRecipe;
+    if (!gt)
+        return 0;
+    const fromMetadata = gt.MetadataByKey("fuel_value", 0);
+    return fromMetadata > 0 ? fromMetadata : 0;
+}
+
+/**
+ * Generator fuel recipes have a fuel value and no duration. Recipes that have both a fuel value and a real
+ * duration (e.g. Large Boiler, which turns fuel into steam) are processing recipes and are left alone.
+ */
+export function IsFuelRecipe(recipe:Recipe):boolean {
+    return GetFuelValue(recipe) > 0 && (recipe.gtRecipe?.durationTicks ?? 0) === 0;
+}
+
+/**
+ * Generators take fuel from hatches, not as filled cells. Convert filled-cell inputs into liters of fluid
+ * and drop the empty container that the recipe would otherwise return/require.
+ */
+export function GetGeneratorItems(items:RecipeInOut[]):RecipeInOut[] {
+    const emptied = new Set<string>();
+    const result:RecipeInOut[] = [];
+    for (const slot of items) {
+        const goods = slot.goods;
+        const container = goods instanceof Item ? goods.container : null;
+        if (slot.type == RecipeIoType.ItemInput && container) {
+            emptied.add(container.empty.id);
+            result.push({...slot, type: RecipeIoType.FluidInput, goods: container.fluid, goodsPtr: container.fluid.objectOffset,
+                amount: slot.amount * container.amount});
+        } else {
+            result.push(slot);
+        }
+    }
+    return result.filter(slot => !(slot.type == RecipeIoType.ItemOutput && emptied.has(slot.goods.id)));
+}
+
+/** Total amount of fuel (liters of fluid and/or count of items) consumed by one fuel recipe. */
+export function GetFuelAmount(items:RecipeInOut[]):number {
+    let total = 0;
+    for (const slot of items) {
+        if (slot.type == RecipeIoType.FluidInput || slot.type == RecipeIoType.ItemInput || slot.type == RecipeIoType.OreDictInput)
+            total += slot.amount;
+    }
+    return total;
+}
+
+/**
+ * Generic fuel generator. Output of one machine is (voltage of the selected tier) x (amperage), so it works for
+ * single-block generators (pick their tier, 1A) as well as multiblocks (pick the tier/amperage they output at).
+ * Efficiency defaults to 100%; set "Efficiency loss" to match the generator you are building.
+ */
+export const fuelGeneratorMachine:Machine = {
+    overclocker: NullOverclocker.instance,
+    speed: 1,
+    power: 1,
+    parallels: 1,
+    choices: {
+        amperage: {description: "Output amperage", min: 1},
+        efficiencyLoss: {description: "Efficiency loss (%)", min: 0, max: 99},
+    },
+    recipe: (recipe, choices, items) => GetGeneratorItems(items),
+    generator: (recipe, choices) => ({
+        euPerTick: voltageTier[recipe.voltageTier].voltage * Math.max(1, choices.amperage ?? 1),
+        efficiencyLossPercent: choices.efficiencyLoss ?? 0,
+    }),
+    info: (recipe, choices) => {
+        const gtRecipe = recipe.recipe?.gtRecipe;
+        const fuelAmount = GetFuelAmount(GetGeneratorItems(recipe.recipe?.items ?? []));
+        const result = gtRecipe && recipe.recipe ? calculateGenerator({
+            fuelValue: GetFuelValue(recipe.recipe),
+            fuelAmount,
+            euPerTick: voltageTier[recipe.voltageTier].voltage * Math.max(1, choices.amperage ?? 1),
+            efficiencyLossPercent: choices.efficiencyLoss ?? 0,
+        }) : null;
+        if (!result)
+            return "Generator";
+        const eut = voltageTier[recipe.voltageTier].voltage * Math.max(1, choices.amperage ?? 1);
+        return `Generates ${eut} EU/t per machine, burning ${Math.round(result.fuelPerTick * 1000) / 1000}/t`;
+    },
+    excludesRecipe: (recipe:Recipe) => !IsFuelRecipe(recipe),
 };
 
 export function GetSingleBlockMachine(recipeType:RecipeType):Machine {

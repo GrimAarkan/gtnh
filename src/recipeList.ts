@@ -580,8 +580,9 @@ export class RecipeList {
             }).join('<br>');
 
             const formattedTotalEnergy = formatAmount(totalEnergy);
+            const label = totalEnergy < 0 ? "EU/t (generated)" : "EU/t";
 
-            return `${tierDetails}<br><br>EU/t: ${formattedTotalEnergy}`;
+            return `${tierDetails}<br><br>${label}: ${formattedTotalEnergy}`;
         }
 
         return `
@@ -616,7 +617,7 @@ export class RecipeList {
         let gtRecipe = recipe.gtRecipe;
         let shortInfoContent = `<span data-tooltip="recipe" data-iid="${recipeModel.iid}">${crafter?.name ?? recipe.recipeType.name}</span>`;
         let machineCountsText = "";
-        if (gtRecipe && gtRecipe.durationTicks > 0) {
+        if (recipeModel.isGenerator || (gtRecipe && gtRecipe.durationTicks > 0)) {
             let machineCounts = recipeModel.crafterCount;
             machineCountsText = formatAmount(machineCounts);
 
@@ -630,7 +631,7 @@ export class RecipeList {
             }
 
             if (!machineInfo.fixedVoltageTier) {
-                const minTier = gtRecipe.voltageTier;
+                const minTier = recipeModel.isGenerator ? 0 : gtRecipe.voltageTier;
                 const maxTier = voltageTier.length - 1;
                 const options = voltageTier
                     .slice(minTier, maxTier + 1)
