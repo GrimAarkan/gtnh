@@ -12,13 +12,13 @@ Data building is done using the NESQL Exporter mod and a C# processing tool. See
 
 Fuel recipes (any recipe with a `fuel_value` in its metadata) are treated as generators. Add one to a page like any recipe, then:
 
-- Pick the voltage tier and **Output amperage** to match the generator (output per machine = tier voltage x amperage).
-- Set **Efficiency loss (%)**. It defaults to 0 (100% efficient), so enter your generator's real loss to get realistic numbers.
-- Tick the "fixed machines" option to say "I have N generators" and the fuel consumption is computed and linked to whatever produces the fuel.
+- Set the fuel input rate per machine. Generic generators also let you set efficiency loss.
+- Large and XL gas turbines let you select rotor size, material, and fitting. Their base and current efficiencies are shown under the machine; current efficiency reflects the selected fuel rate.
+- Turbine power is calculated from fuel value, fuel input rate, and current efficiency. Fuel flow determines machine count automatically, so generators do not use the fixed-machine setting.
 
 Fuel given as filled cells (e.g. "Jet Fuel A Cell") is converted to liters of fluid, so no empty cells are required. Recipes that have a fuel value *and* a duration (Large Boiler) are not treated as generators.
 
-Generated power shows as negative EU/t, so group and grand totals read as net consumption.
+Generated power appears in the POWER column as negative EU/t, and burned fuel appears in inputs, so group and grand totals read as net consumption.
 The generator math lives in `src/fuel.ts` (unit tested in `src/tests/fuel.test.ts`).
 
 ## Development

@@ -5,7 +5,7 @@ import { voltageTier, GtVoltageTier, formatAmount } from "./utils.js";
 import { ShowTooltip } from "./tooltip.js";
 import { IconBox } from "./itemIcon.js";
 import { ShowDropdown, HideDropdown } from "./dropdown.js";
-import { machines, notImplementedMachine, singleBlockMachine, GetSingleBlockMachine, GetParameter } from "./machines.js";
+import { machines, notImplementedMachine, singleBlockMachine, GetSingleBlockMachine, GetParameter, IsFuelRecipe } from "./machines.js";
 
 const linkAlgorithmNames: { [key in LinkAlgorithm]: string } = {
     [LinkAlgorithm.Match]: "",
@@ -125,6 +125,7 @@ export class RecipeList {
                 }
 
                 const populateDropdown = (container: HTMLElement) => {
+                    const canFixCrafterCount = !IsFuelRecipe(recipe);
                     container.innerHTML = `
                         <div class="dropdown-list">
                             Select crafter:
@@ -141,16 +142,18 @@ export class RecipeList {
                                     </div>
                                 `;
                             }).join('')}
-                            <div>
-                                <label>
-                                    <input type="checkbox" 
-                                        data-iid="${obj.iid}"
-                                        data-action="toggle_fixed_crafter_count"
-                                        ${obj.fixedCrafterCount !== undefined ? 'checked' : ''}>
-                                    Set fixed crafter count
-                                </label>
-                            </div>
-                            ${obj.fixedCrafterCount !== undefined ? `
+                            ${canFixCrafterCount ? `
+                                <div>
+                                    <label>
+                                        <input type="checkbox"
+                                            data-iid="${obj.iid}"
+                                            data-action="toggle_fixed_crafter_count"
+                                            ${obj.fixedCrafterCount !== undefined ? 'checked' : ''}>
+                                        Set fixed crafter count
+                                    </label>
+                                </div>
+                            ` : ''}
+                            ${canFixCrafterCount && obj.fixedCrafterCount !== undefined ? `
                                 <div>
                                     <label>
                                         Crafter count:
@@ -573,8 +576,8 @@ export class RecipeList {
 
             const tierDetails = Object.entries(energy).map(([tier, amount]) => {
                 const tierInfo = voltageTier[parseInt(tier)];
-                const current = Math.ceil(100 * amount / tierInfo.voltage) / 100;
-                totalEnergy += Math.ceil(amount);
+                const current = Math.ceil(100 * Math.abs(amount) / tierInfo.voltage) / 100;
+                totalEnergy += amount;
 
                 return `${tierInfo.name}: ${current}A`;
             }).join('<br>');
@@ -654,7 +657,8 @@ export class RecipeList {
         // Render machine choices if they exist
         if (machineInfo.choices) {
             const choicesHtml = Object.entries(machineInfo.choices).map(([key, choice]) => {
-                const currentValue = recipeModel.choices[key] ?? choice.min ?? 0;
+                const currentValue = recipeModel.choices[key] ??
+                    (typeof choice.defaultValue === "number" ? choice.defaultValue : choice.min ?? 0);
                 let inputHtml = '';
                 
                 if (choice.choices) {
@@ -676,6 +680,7 @@ export class RecipeList {
                             value="${currentValue}"
                             min="${choice.min ?? 0}"
                             max="${choice.max ?? ''}"
+                            step="any"
                         >
                     `;
                 }

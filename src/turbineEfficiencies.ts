@@ -75,7 +75,7 @@ const miningSpeedByMaterial: Record<string, number> = {
     "Wrought Iron": 6, "Tin Alloy": 6.5, "Brass": 7, "Silver": 10,
     "Electrum": 12, "Gold": 12, "Beryllium": 14, "Nickel-Zinc Ferrite": 3,
     "Polycaprolactam": 3, "Redstone Alloy": 3, "Vanadiumsteel": 3, "Alumite": 5,
-    "Obzinite": 5, "Calcium": 5.49, "Bismuth": 6, "Conductive Iron": 6,
+    "Obzinite": 5, "Calcium": 5.4900007, "Bismuth": 6, "Conductive Iron": 6,
     "Cupronickel": 6, "Electrical Steel": 6, "Invar": 6, "Ironwood": 6,
     "Magnalium": 6, "Nickel": 6, "Pig Iron": 6, "Pulsating Iron": 6,
     "Thorium": 6, "Black Steel": 6.5, "Manganese": 7, "Molybdenum": 7,
@@ -95,13 +95,13 @@ const miningSpeedByMaterial: Record<string, number> = {
     "Vinteum": 10, "End Steel": 12, "Platinum": 12, "Tungstencarbide": 14,
     "Duralumin": 16, "Enderium Base": 16, "TPV-Alloy": 16, "Crystalline Alloy": 18,
     "Desh": 20, "Elven Elementium": 20, "Melodic Alloy": 24, "Vyroxeres": 32,
-    "Rubracium": 1, "MAR-M200 Steel": 2.60441, "Iridium": 6, "Plutonium-239": 6,
+    "Rubracium": 1, "MAR-M200 Steel": 2.6044068, "Iridium": 6, "Plutonium-239": 6,
     "Osmiridium": 7, "Mytryl": 8, "Palladium": 8, "Callisto Ice": 9,
     "Infused Gold": 12, "Rhodium-Plated Palladium": 13.2, "Ledox": 15, "Osmium": 16,
     "Quantium": 18, "Ruridit": 19.36, "HSS-E": 32, "HSS-S": 32,
     "Ichorium": 32, "Orichalcum": 32, "Oriharukon": 32, "Deep Iron": 6,
     "Naquadah": 6, "Shadow Steel": 6, "Mysterious Crystal": 8, "Naquadah Alloy": 8,
-    "Force": 10, "Fluxed Electrum": 16, "Draconium": 20, "Atomic Separation Catalyst": 31.72,
+    "Force": 10, "Fluxed Electrum": 16, "Draconium": 20, "Atomic Separation Catalyst": 31.720001,
     "Alduorite": 32, "Ceruclase": 32, "Duranium": 32, "Gaia Spirit": 32,
     "High Durability Compound Steel": 32, "Mithril": 32, "Shadow Iron": 32, "Vulcanite": 32,
     "Stellar Alloy": 96, "Trinium": 128, "MAR-Ce-M200 Steel": 150, "Naquadria": 1,
@@ -110,7 +110,7 @@ const miningSpeedByMaterial: Record<string, number> = {
     "Extremely Unstable Naquadah": 100, "Adamantium Alloy": 191.2, "Awakened Draconium": 40, "Infinity Catalyst": 64,
     "Precious Metal Alloy": 100, "Enriched Naquadah Alloy": 180, "Infinity": 256, "Creon": 1,
     "Mellion": 1, "Six-Phased Copper": 1, "Deep Dark Iron": 7, "Transcendent Metal": 290,
-    "Spacetime": 320, "Metastable Oganesson": 443.52, "Shirabon": 640, "Eternity": 1,
+    "Spacetime": 320, "Metastable Oganesson": 443.52002, "Shirabon": 640, "Eternity": 1,
     "Magmatter": 1, "Universium": 1,
 };
 
@@ -158,17 +158,20 @@ export function getGasTurbineProfile(
     const sizeMultiplier = rotorSizeIndex + 1;
     const sizeEfficiencyOffset = [0, 2.5, 5, 7.5][rotorSizeIndex];
     const tightEfficiency = 0.5 + 0.1 * (0.5 + sizeEfficiencyOffset + material.tier);
+    const roundedEfficiency = Math.round(Number((tightEfficiency * 85).toFixed(10)));
     const baseEfficiency = fittingIndex === 0
         ? tightEfficiency
-        : (-0.2 + Math.round(tightEfficiency * 85) * 0.01) * 0.95;
+        : (-0.2 + roundedEfficiency * 0.01) * 0.95;
 
     const gasFlowAtOneEuPerLiter = miningSpeed * sizeMultiplier * 50;
     const optimalFlowPerTickAtOneEuPerLiter = fittingIndex === 0
         ? gasFlowAtOneEuPerLiter
-        : 2 * gasFlowAtOneEuPerLiter * Math.pow(1.05, (tightEfficiency - 0.8) * 20);
+        : 2 * gasFlowAtOneEuPerLiter * Math.pow(1.04999995231628, (tightEfficiency - 0.8) * 20);
     const xlMultiplier = isXl ? 16 : 1;
     const optimalFlowPerTick = optimalFlowPerTickAtOneEuPerLiter / fuelValue * xlMultiplier;
-    const maxFlowPerTick = Math.floor(optimalFlowPerTick) * 1.5 * overflowTier;
+    const maxFlowPerTick = isXl
+        ? Math.floor(optimalFlowPerTick) * 1.25
+        : Math.floor(optimalFlowPerTick) * 1.5 * overflowTier;
 
     return {
         baseEfficiency,

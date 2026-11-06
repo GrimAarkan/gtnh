@@ -112,7 +112,7 @@ function PreProcessRecipe(recipeModel:RecipeModel, model:Model, collection:LinkC
     recipeModel.machineInfo = machineInfo;
     recipeModel.isGenerator = false;
     if (isFuelRecipe && machineInfo.generator) {
-        PreProcessGenerator(recipeModel, recipe, machineInfo, varName, model);
+        PreProcessGenerator(recipeModel, recipe, machineInfo);
     } else if (gtRecipe && gtRecipe.durationTicks > 0) {
         if (machineInfo.fixedVoltageTier) {
             recipeModel.voltageTier = GetParameter(machineInfo.fixedVoltageTier, recipeModel)!;
@@ -183,34 +183,30 @@ function PreProcessRecipe(recipeModel:RecipeModel, model:Model, collection:LinkC
     }
 }
 
-function PreProcessGenerator(recipeModel:RecipeModel, recipe:Recipe, machineInfo:Machine, varName:string, model:Model)
+function PreProcessGenerator(recipeModel:RecipeModel, recipe:Recipe, machineInfo:Machine)
 {
     recipeModel.ValidateChoices(machineInfo, recipeModel);
+    // Generators now scale with linked fuel flow; old saved fixed-machine values must not pin them.
+    recipeModel.fixedCrafterCount = undefined;
     const spec = machineInfo.generator!(recipeModel, recipeModel.choices);
     const result = calculateGenerator({
         fuelValue: GetFuelValue(recipe),
         fuelAmount: GetFuelAmount(machineInfo.recipe ? machineInfo.recipe(recipeModel, recipeModel.choices, recipe.items) : recipe.items),
-        euPerTick: spec.euPerTick,
+        fuelInputPerSecond: spec.fuelInputPerSecond,
+        baseEfficiency: spec.baseEfficiency,
         efficiency: spec.efficiency,
     });
     if (result === null)
         return;
 
     recipeModel.isGenerator = true;
-    recipeModel.generatorEuPerTick = spec.euPerTick;
-    recipeModel.generatorDurationMinutes = result.durationMinutes;
     recipeModel.overclockFactor = 1;
     recipeModel.powerFactor = 1;
     recipeModel.parallels = 1;
     recipeModel.overclockTiers = 0;
     recipeModel.overclockName = undefined;
-
-    if (recipeModel.fixedCrafterCount) {
-        let crafterName = `fixed_${recipeModel.iid}`;
-        let fixedRecipesPerMinute = recipeModel.fixedCrafterCount / result.durationMinutes;
-        model.variables[varName][crafterName] = 1;
-        model.constraints[crafterName] = {equal:fixedRecipesPerMinute};
-    }
+    recipeModel.generatorEuPerTick = result.euPerTick;
+    recipeModel.generatorDurationMinutes = result.durationMinutes;
 }
 
 function CreateAndMatchLinks(group:RecipeGroupModel, model:Model, collection:LinkCollection)

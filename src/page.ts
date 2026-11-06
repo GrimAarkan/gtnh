@@ -288,7 +288,13 @@ export class RecipeModel extends RecipeGroupEntry
             let max = typedChoice.max ?? Number.POSITIVE_INFINITY;
             if (typedChoice.choices)
                 max = typedChoice.choices.length - 1;
-            validatedChoices[key] = Math.min(Math.max(currentValue ?? min, min), max);
+            const defaultValue = typeof typedChoice.defaultValue === "function"
+                ? typedChoice.defaultValue(recipe, validatedChoices)
+                : typedChoice.defaultValue;
+            const fallback = defaultValue ?? min;
+            const requestedValue = currentValue ?? fallback;
+            const safeValue = Number.isFinite(requestedValue) ? requestedValue : fallback;
+            validatedChoices[key] = Math.min(Math.max(safeValue, min), max);
         }
 
         if (machineInfo.enforceChoiceConstraints)
