@@ -125,7 +125,12 @@ function PreProcessRecipe(recipeModel:RecipeModel, model:Model, collection:LinkC
         let maxParallels = machineInfo.ignoreParallelLimit ? machineParallels : Math.max(1, Math.floor(actualVoltage / (gtRecipe.voltage * energyModifier * amperage)));
         let parallels = Math.min(maxParallels, machineParallels);
         let tierDifference = recipeModel.voltageTier - gtRecipe.voltageTier;
-        let overclockTiers = isSingleblock ? tierDifference : Math.min(tierDifference, Math.floor(Math.log2(maxParallels / parallels) / 2));
+        let extraOverclocks = machineInfo.extraOverclocks
+            ? Math.max(0, GetParameter(machineInfo.extraOverclocks, recipeModel))
+            : 0;
+        let overclockTiers = isSingleblock
+            ? tierDifference
+            : Math.min(tierDifference + extraOverclocks, Math.floor(Math.log2(maxParallels / parallels) / 2));
         let overclockResult = GetParameter(machineInfo.overclocker, recipeModel).calculate(recipeModel, overclockTiers);
         let speedModifier = GetParameter(machineInfo.speed, recipeModel);
         //console.log({machineParallels, maxParallels, parallels, overclockTiers, overclockSpeed, overclockPower, energyModifier, speedModifier});

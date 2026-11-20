@@ -1,0 +1,1 @@
+- [Recipe data source](recipe-data.md) — the GTNH data export lists recipes and available crafters, but machine performance rules must be sourced separately.

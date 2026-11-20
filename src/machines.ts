@@ -111,6 +111,7 @@ export type Machine = {
     info?: MachineCoefficient<string>;
     ignoreParallelLimit?: boolean;
     fixedVoltageTier?: MachineCoefficient<number>;
+    extraOverclocks?: MachineCoefficient<number>;
     excludesRecipe?: (recipe:Recipe) => boolean;
     roundAfterParallels?: boolean;
     /**
@@ -972,14 +973,11 @@ machines["Hyper-Intensity Laser Engraver"] = {
     choices: {laserAmperage: {description: "Laser Amperage", min: 1}},
 };
 
-let precisionLatheParallels:number[] = [1, 1, 2, 4, 8, 12, 16, 32];
-let precisionLatheSpeed:number[] = [0.75, 0.8, 0.9, 1, 1.5, 2, 3, 4];
-
 machines["Industrial Precision Lathe"] = {
     overclocker: StandardOverclocker.onlyNormal(),
-    speed: (recipe, choices) => ((precisionLatheSpeed[choices.itemPipeCasings] + recipe.voltageTier + 1) / 4),
+    speed: 4,
     power: 0.8,
-    parallels: (recipe, choices) => precisionLatheParallels[choices.itemPipeCasings] + (recipe.voltageTier + 1) * 2,
+    parallels: (recipe, choices) => (choices.itemPipeCasings + 1) * 8,
     choices: {itemPipeCasings:PipeItemCasingTierChoice}
 };
 
@@ -999,14 +997,14 @@ machines["Industrial Bending Machine"] = {
     overclocker: StandardOverclocker.onlyNormal(),
     speed: 6,
     power: 1,
-    parallels: (recipe) => (recipe.voltageTier + 1) * 6,
+    parallels: (recipe) => (recipe.voltageTier + 1) * 4,
 };
 
 machines["Industrial Forming Press"] = {
     overclocker: StandardOverclocker.onlyNormal(),
     speed: 6,
     power: 1,
-    parallels: (recipe) => (recipe.voltageTier + 1) * 6,
+    parallels: (recipe) => (recipe.voltageTier + 1) * 4,
 };
 
 machines["Nano Forge"] = {
@@ -1093,7 +1091,7 @@ machines["Neutronium Compressor"] = {
 
 machines["Amazon Warehousing Depot"] = {
     overclocker: StandardOverclocker.onlyNormal(),
-    speed: (recipe, choices) => choices.tier + 1,
+    speed: (recipe, choices) => choices.tier + 2,
     power: 0.75,
     parallels: (recipe) => (recipe.voltageTier + 1) * 16,
     choices: {tier: PipeItemCasingTierChoice},
@@ -1363,7 +1361,7 @@ machines["Boldarnator"] = {
 
 machines["Large Thermal Refinery"] = {
     overclocker: StandardOverclocker.onlyNormal(),
-    speed: (recipe, choices) => 2.5 * (1 + (choices.coilTier + 1) * 0.05),
+    speed: (recipe, choices) => 2.5 + (choices.coilTier + 1) * 0.05,
     power: (recipe, choices) => 0.8 * Math.pow(0.95, choices.coilTier + 1),
     parallels: (recipe, choices) => (recipe.voltageTier + 1) * 8 + (choices.solenoidTier + 1) * 2,
     choices: {solenoidTier: SolenoidTierChoice, coilTier: CoilTierChoice},
@@ -1474,9 +1472,10 @@ machines["Industrial Coke Oven"] = {
 
 machines["Cryogenic Freezer"] = {
     overclocker: StandardOverclocker.onlyNormal(),
-    speed: 2.2,
+    speed: 3,
     power: 0.9,
-    parallels: 8,
+    parallels: 16,
+    info: "Consumes 10 L/s gelid cryotheum while running; coolant is not included in recipe inputs.",
 };
 
 machines["COMET - Compact Cyclotron"] = {
@@ -1556,10 +1555,11 @@ machines["Molecular Transformer"] = {
 
 machines["Industrial Centrifuge"] = {
     overclocker: StandardOverclocker.onlyNormal(),
-    speed: 3,
+    speed: (recipe, choices) => 2 + choices.momentum / 100,
     power: 0.9,
-    parallels: (recipe) => (recipe.voltageTier + 1) * 8,
-    info: "Assumes max speed"
+    parallels: (recipe, choices) => Math.floor((recipe.voltageTier + 1) * 4 * (1 + choices.momentum / 100)),
+    choices: {momentum: {description: "Momentum (%)", min: 0, max: 100, defaultValue: 100}},
+    info: (recipe, choices) => `Momentum: ${choices.momentum}% (speed ${200 + choices.momentum}% and up to ${Math.floor(4 + 4 * choices.momentum / 100)} parallels per tier)`,
 };
 
 machines["Spinmatron-2737"] = {
@@ -1782,11 +1782,155 @@ machines["Draconic Evolution Fusion Crafter"] = {
     }
 };
 
-machines["Large Sifter Control Block"] = {
+const largeSifterMachine:Machine = {
     overclocker: StandardOverclocker.onlyNormal(),
     speed: 5,
     power: 0.75,
     parallels: (recipe) => (recipe.voltageTier + 1) * 4,
+};
+// Keep the old key for saved pages while also matching the name in current recipe data.
+machines["Large Sifter"] = machines["Large Sifter Control Block"] = largeSifterMachine;
+
+machines["Mass Solidifier"] = {
+    overclocker: StandardOverclocker.onlyNormal(),
+    speed: (recipe, choices) => choices.speedPercent / 100,
+    power: 0.8,
+    parallels: (recipe) => (recipe.voltageTier + 1) * 10,
+    choices: {speedPercent: {description: "Current speed (%)", min: 100, max: 300, defaultValue: 300}},
+    info: (recipe, choices) => `Current speed: ${choices.speedPercent}% (ramps up while active and decays while idle)`,
+};
+
+type ExoFoundryStats = {
+    speed:number;
+    power:number;
+    parallelsPerTier:number;
+    overclockFactor:number;
+    extraOverclocks:number;
+}
+
+function getExoFoundryStats(choices:{[key:string]:number}):ExoFoundryStats {
+    const scb = choices.scb ?? 0;
+    const pvs = choices.pvs ?? 0;
+    const sc = choices.sc ?? 0;
+    const hc = choices.hc ?? 0;
+    const hr = choices.hr ?? 0;
+    const so = choices.so ?? 0;
+    const uc = choices.uc ?? 0;
+    const coolant = choices.coolant ?? 0;
+    const entropy = hr >= 3 ? (choices.entropy ?? 0) : 0;
+
+    const optimumProduction = scb > 0 && sc > 0;
+    const harmonicEfficiency = pvs > 0 && so > 0;
+    const realizedPotential = hc > 0 && uc > 0 && coolant === 3;
+    const speed = (1.5 + sc * 1.5 + (optimumProduction ? 0.8 : 0) + entropy)
+        * (uc > 0 ? 4 : 1) * (realizedPotential ? 2 : 1);
+    const power = Math.max(0, 1 - pvs * 0.1 - (harmonicEfficiency ? 0.5 : 0) - entropy * 0.15)
+        * Math.pow(0.8, pvs) * (uc > 0 ? 4 : 1) * (realizedPotential ? 2 : 1);
+    const parallelsPerTier = Math.floor(16 + scb * 12 + (optimumProduction ? 8 : 0) + entropy * 8);
+    const overclockFactor = 2 + so * 0.4 + (harmonicEfficiency ? 0.1 : 0) + entropy * 0.05;
+    const extraOverclocks = (hc > 0 ? coolant : 0) + (hr >= 4 ? entropy : 0);
+
+    return {speed, power, parallelsPerTier, overclockFactor, extraOverclocks};
+}
+
+function enforceExoFoundryChoices(recipe:RecipeModel, choices:{[key:string]:number}):void {
+    const recipeTier = recipe.recipe?.gtRecipe?.voltageTier ?? 0;
+    // UIV+ recipes require at least one Heliocast Reinforcement or Universal Collapser.
+    if (recipeTier >= TIER_UIV && (choices.hr ?? 0) === 0 && (choices.uc ?? 0) === 0) {
+        choices.chassisTier = Math.max(choices.chassisTier, 1);
+        choices.hr = 1;
+    }
+
+    // Higher-tier modules require the matching magnetic chassis structure.
+    if ((choices.so ?? 0) > 0 || (choices.uc ?? 0) > 0)
+        choices.chassisTier = 2;
+    else if ((choices.hc ?? 0) > 0 || (choices.hr ?? 0) > 0)
+        choices.chassisTier = Math.max(choices.chassisTier, 1);
+
+    const chassisTier = choices.chassisTier;
+    const availableModules = chassisTier === 0
+        ? ["scb", "pvs", "sc"]
+        : chassisTier === 1
+            ? ["scb", "pvs", "sc", "hc", "hr"]
+            : ["scb", "pvs", "sc", "hc", "hr", "so", "uc"];
+    for (const key of ["scb", "pvs", "sc", "hc", "hr", "so", "uc"]) {
+        choices[key] = availableModules.includes(key)
+            ? Math.floor(Math.max(0, choices[key] ?? 0))
+            : 0;
+    }
+
+    const slotCount = chassisTier + 2;
+    let usedSlots = 0;
+    // Preserve required/high-tier modules first when a saved configuration exceeds its slot count.
+    for (const key of ["hr", "uc", "so", "scb", "pvs", "sc", "hc"]) {
+        const moduleLimit = key === "hc" || key === "so" || key === "uc" ? 1 : 4;
+        const count = Math.min(moduleLimit, choices[key], slotCount - usedSlots);
+        choices[key] = Math.max(0, count);
+        usedSlots += choices[key];
+    }
+
+    if (choices.hc === 0)
+        choices.coolant = 0;
+    else if (choices.coolant === 3 && choices.uc === 0)
+        choices.coolant = 2;
+
+    choices.entropy = choices.hr >= 3
+        ? Math.min(choices.hr, Math.max(0, choices.entropy ?? choices.hr / 2))
+        : 0;
+}
+
+machines["Exo-Foundry"] = {
+    overclocker: (recipe, choices) => {
+        const stats = getExoFoundryStats(choices);
+        return new OverclockerFromClosure((recipeModel, overclockTiers) => {
+            const count = Math.max(0, overclockTiers);
+            return {
+                overclockSpeed: Math.pow(stats.overclockFactor, count),
+                overclockPower: Math.pow(4, count),
+                perfectOverclocks: 0,
+                overclockName: count > 0
+                    ? `Exo-Foundry OC x${count} (${stats.overclockFactor.toFixed(3)}/4)`
+                    : "No overclocks",
+            };
+        });
+    },
+    speed: (recipe, choices) => getExoFoundryStats(choices).speed,
+    power: (recipe, choices) => getExoFoundryStats(choices).power,
+    parallels: (recipe, choices) => (recipe.voltageTier + 1) * getExoFoundryStats(choices).parallelsPerTier,
+    extraOverclocks: (recipe, choices) => getExoFoundryStats(choices).extraOverclocks,
+    choices: {
+        chassisTier: {
+            description: "Magnetic chassis",
+            choices: ["T1 Infinite (2 slots)", "T2 Eternal (3 slots)", "T3 Celestial (4 slots)"],
+        },
+        scb: {description: "Superdense Casting Basins", min: 0, max: 4},
+        pvs: {description: "Proto-Volt Stabilizer", min: 0, max: 4},
+        sc: {description: "Streamlined Casters", min: 0, max: 4},
+        hc: {description: "Hypercooler", min: 0, max: 1},
+        hr: {description: "Heliocast Reinforcement", min: 0, max: 4},
+        so: {description: "Sentient Overclocker", min: 0, max: 1},
+        uc: {description: "Universal Collapser", min: 0, max: 1},
+        coolant: {
+            description: "Hypercooler coolant",
+            choices: ["None", "Supercoolant (+1 OC)", "Spacetime (+2 OCs)", "Eternity (+3 OCs)"],
+        },
+        entropy: {
+            description: "Average entropic roll",
+            min: 0,
+            max: 4,
+            defaultValue: (recipe, choices) => (choices.hr ?? 0) >= 3 ? choices.hr / 2 : 0,
+        },
+    },
+    enforceChoiceConstraints: enforceExoFoundryChoices,
+    info: (recipe, choices) => {
+        const stats = getExoFoundryStats(choices);
+        const moduleCount = ["scb", "pvs", "sc", "hc", "hr", "so", "uc"]
+            .reduce((sum, key) => sum + (choices[key] ?? 0), 0);
+        const slotCount = choices.chassisTier + 2;
+        return `T${choices.chassisTier + 1} chassis · ${moduleCount}/${slotCount} modules · Speed ${Math.round(stats.speed * 100)}% · ` +
+            `EU/t ${Math.round(stats.power * 1000) / 10}% · ${stats.parallelsPerTier} parallels/tier · ` +
+            `OC factor ${stats.overclockFactor.toFixed(3)}/4 · +${stats.extraOverclocks} bonus OCs; coolant use not included`;
+    },
 };
 
 function getFusionTier(recipe:Recipe): number {
